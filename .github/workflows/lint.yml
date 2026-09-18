@@ -1,0 +1,78 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  helm-lint:
+    name: Helm lint & validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Helm lint (base + cloud overlays)
+        run: |
+          set -euo pipefail
+          helm lint ./open-webui --strict
+          for cloud in eks gke aks; do
+            echo "::group::helm lint ($cloud overlay)"
+            helm lint ./open-webui --strict -f "open-webui/values-${cloud}.yaml"
+            echo "::endgroup::"
+          done
+
+      - name: Install kubeconform
+        run: |
+          set -euo pipefail
+          curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xz kubeconform
+          sudo install -m 0755 kubeconform /usr/local/bin/kubeconform
+          kubeconform -v
+
+      - name: Render & validate manifests (base + cloud overlays)
+        run: |
+          set -euo pipefail
+          validate() {
+            local name="$1"; shift
+            echo "::group::kubeconform ($name)"
+            helm template ci ./open-webui "$@" \
+              | kubeconform -strict -summary -ignore-missing-schemas \
+                  -kubernetes-version 1.29.0 -schema-location default
+            echo "::endgroup::"
+          }
+          validate base
+          validate eks -f open-webui/values-eks.yaml
+          validate gke -f open-webui/values-gke.yaml
+          validate aks -f open-webui/values-aks.yaml
+
+  yaml-lint:
+    name: YAML lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: yamllint (values files)
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: >-
+            open-webui/values.yaml
+            open-webui/values-eks.yaml
+            open-webui/values-gke.yaml
+            open-webui/values-aks.yaml
+          config_data: |
+            extends: relaxed
+            rules:
+              line-length: disable
+              trailing-spaces: enable
+              empty-lines:
+                max: 2
