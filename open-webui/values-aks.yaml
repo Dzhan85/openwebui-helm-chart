@@ -1,0 +1,64 @@
+# Azure AKS overlay.
+#
+#   helm install open-webui ./open-webui -f open-webui/values-aks.yaml
+#
+# Prerequisites:
+#   - Ingress: this overlay uses the AKS application routing add-on, which
+#     installs a managed NGINX controller exposing the `webapprouting.kubernetes.io`
+#     ingress class. Enable with:
+#       az aks approuting enable -g <rg> -n <cluster>
+#     (Alternatively use Application Gateway Ingress Controller with
+#      className: azure-application-gateway.)
+#   - Azure Disk CSI driver provides the managed-csi storage class.
+#   - Workload Identity: annotate the KSA with the AAD app client id and label
+#     the pod with azure.workload.identity/use.
+#   - (optional) External Secrets Operator + Azure Key Vault.
+
+serviceAccount:
+  annotations:
+    # Replace with your workload identity application (client) id:
+    azure.workload.identity/client-id: "00000000-0000-0000-0000-000000000000"
+
+# Required for Azure AD Workload Identity token projection.
+podLabels:
+  azure.workload.identity/use: "true"
+
+ingress:
+  className: "webapprouting.kubernetes.io"
+  annotations: {}
+    # For cert-manager issued TLS, e.g.:
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+  - host: "openwebui.example.com" # Add your domain here
+    paths:
+    - path: /
+      pathType: Prefix
+
+persistence:
+  storageClass: "managed-csi" # use "managed-csi-premium" for premium SSD
+
+# External Secrets Operator + Azure Key Vault (optional)
+secretStore:
+  enabled: true
+  name: "open-webui-secret-store"
+  provider:
+    azurekv:
+      authType: WorkloadIdentity
+      vaultUrl: "https://my-keyvault.vault.azure.net"
+      serviceAccountRef:
+        name: open-webui-sa
+
+externalSecrets:
+  enabled: true
+  name: "open-webui-external-secret"
+  secretStoreRef:
+    name: "open-webui-secret-store"
+    kind: SecretStore
+  refreshInterval: 1m
+  target:
+    name: "open-webui-secrets"
+    creationPolicy: Owner
+  data:
+  - secretKey: WEBUI_SECRET_KEY
+    remoteRef:
+      key: open-webui-webui-secret-key

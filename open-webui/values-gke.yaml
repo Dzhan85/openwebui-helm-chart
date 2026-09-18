@@ -1,0 +1,68 @@
+# Google GKE overlay.
+#
+#   helm install open-webui ./open-webui -f open-webui/values-gke.yaml
+#
+# Prerequisites:
+#   - GKE ingress uses the built-in `gce` controller (GKE Ingress / GCLB).
+#     A GCE ingress requires the Service to be type NodePort (or LoadBalancer),
+#     so the service type is overridden below.
+#   - PD CSI driver provides the standard-rwo / premium-rwo storage classes.
+#   - Workload Identity: bind a GCP service account to the KSA.
+#   - (optional) External Secrets Operator + GCP Secret Manager.
+
+serviceAccount:
+  annotations:
+    # Replace <gsa> and <project>. Requires Workload Identity enabled on the cluster.
+    iam.gke.io/gcp-service-account: "open-webui@my-project.iam.gserviceaccount.com"
+
+service:
+  # GKE Ingress (gce) requires NodePort backends.
+  type: NodePort
+
+ingress:
+  className: "gce"
+  annotations:
+    # Use a global static IP (reserve with `gcloud compute addresses create`):
+    # kubernetes.io/ingress.global-static-ip-name: "open-webui-ip"
+    # Google-managed TLS certificate (create a ManagedCertificate object):
+    # networking.gke.io/managed-certificates: "open-webui-cert"
+    # Allow both HTTP and HTTPS while you set up TLS:
+    kubernetes.io/ingress.allow-http: "true"
+  hosts:
+  - host: "openwebui.example.com" # Add your domain here
+    paths:
+    - path: /
+      pathType: Prefix
+
+persistence:
+  storageClass: "standard-rwo" # use "premium-rwo" for SSD-backed persistent disks
+
+# External Secrets Operator + GCP Secret Manager (optional)
+secretStore:
+  enabled: true
+  name: "open-webui-secret-store"
+  provider:
+    gcpsm:
+      projectID: "my-project"
+      auth:
+        workloadIdentity:
+          clusterLocation: us-central1
+          clusterName: my-cluster
+          serviceAccountRef:
+            name: open-webui-sa
+
+externalSecrets:
+  enabled: true
+  name: "open-webui-external-secret"
+  secretStoreRef:
+    name: "open-webui-secret-store"
+    kind: SecretStore
+  refreshInterval: 1m
+  target:
+    name: "open-webui-secrets"
+    creationPolicy: Owner
+  data:
+  - secretKey: WEBUI_SECRET_KEY
+    remoteRef:
+      key: open-webui-prod-webui-secret-key
+      property: WEBUI_SECRET_KEY

@@ -1,0 +1,103 @@
+# Amazon EKS overlay.
+#
+#   helm install open-webui ./open-webui -f open-webui/values-eks.yaml
+#
+# Prerequisites:
+#   - AWS Load Balancer Controller (for the `alb` ingress class)
+#   - EBS CSI driver (for gp3 volumes)
+#   - IRSA: an IAM role annotated onto the service account
+#   - (optional) External Secrets Operator + AWS Secrets Manager
+
+serviceAccount:
+  annotations:
+    # Replace with your IRSA role ARN:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/open-webui"
+
+ingress:
+  className: "alb"
+  annotations:
+    # Replace with your ACM certificate ARN:
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:us-west-2:123456789012:certificate/REPLACE_ME"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    # Health check configuration
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '15'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+    alb.ingress.kubernetes.io/success-codes: '200'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '2'
+    # Better connection handling for long-lived sessions / large uploads
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30,stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=86400
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=300
+  hosts:
+  - host: "openwebui.example.com" # Add your domain here
+    paths:
+    - path: /
+      pathType: Prefix
+
+persistence:
+  storageClass: "gp3" # gp3 recommended; gp2 also works with the EBS CSI driver
+
+# Prefer larger instance types with more ephemeral storage; spread across nodes.
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      preference:
+        matchExpressions:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+          - m5.2xlarge
+          - m7a.2xlarge
+    - weight: 50
+      preference:
+        matchExpressions:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+          - c7a.xlarge
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - openwebui-k8s
+        topologyKey: kubernetes.io/hostname
+
+# External Secrets Operator + AWS Secrets Manager (optional)
+secretStore:
+  enabled: true
+  name: "open-webui-secret-store"
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-west-2
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: open-webui-sa
+
+externalSecrets:
+  enabled: true
+  name: "open-webui-external-secret"
+  secretStoreRef:
+    name: "open-webui-secret-store"
+    kind: SecretStore
+  refreshInterval: 1m
+  target:
+    name: "open-webui-secrets"
+    creationPolicy: Owner
+  data:
+  - secretKey: WEBUI_SECRET_KEY
+    remoteRef:
+      key: open-webui/prod
+      property: WEBUI_SECRET_KEY

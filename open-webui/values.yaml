@@ -1,0 +1,257 @@
+# Default values for open-webui.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+#
+# These defaults are CLOUD-NEUTRAL: a plain `helm install` renders valid
+# manifests on any conformant Kubernetes cluster (EKS, GKE, AKS, k3s, kind,
+# on-prem, ...). Cloud-specific integrations (managed load balancers, IAM/
+# workload identity, secret managers) are turned OFF by default and layered in
+# with an overlay values file:
+#
+#   helm install open-webui ./open-webui -f open-webui/values-eks.yaml
+#   helm install open-webui ./open-webui -f open-webui/values-gke.yaml
+#   helm install open-webui ./open-webui -f open-webui/values-aks.yaml
+
+replicaCount: 1
+
+image:
+  repository: "ghcr.io/open-webui/open-webui"
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "main"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Automount API credentials for a service account.
+  automount: true
+  # Annotations to add to the service account. Leave empty for a portable
+  # deployment. Add cloud identity bindings via an overlay values file:
+  #   EKS (IRSA):        eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/<role>
+  #   GKE (Workload ID): iam.gke.io/gcp-service-account: <sa>@<project>.iam.gserviceaccount.com
+  #   AKS (Workload ID): azure.workload.identity/client-id: <client-id>
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template.
+  name: open-webui-sa
+
+# Default security context settings
+podSecurityContext:
+  fsGroup: 1654
+
+# Default container security context settings
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 1654
+  runAsGroup: 1654
+
+podAnnotations: {}
+podLabels: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  # Leave empty to use the cluster's default IngressClass. Override per cloud:
+  #   EKS: alb        GKE: gce        AKS: azure-application-gateway / webapprouting.kubernetes.io
+  # Any cluster with an NGINX ingress controller can use: nginx
+  className: ""
+  # Controller-specific annotations. Empty by default for portability; set them
+  # in a cloud overlay (see values-eks.yaml / values-gke.yaml / values-aks.yaml).
+  annotations: {}
+  hosts:
+  - host: "openwebui.example.com" # Add your domain here
+    paths:
+    - path: /
+      pathType: Prefix
+  tls: []
+  # - secretName: openwebui-tls
+  #   hosts:
+  #     - openwebui.example.com
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4096Mi # Increased to 4GB for large xlsx file processing
+    ephemeral-storage: 5Gi
+  requests:
+    cpu: 1000m
+    memory: 2048Mi # Increased to 2GB for better stability
+    ephemeral-storage: 2Gi
+
+# Liveness and Readiness Probes (prevents pod restarts during file processing)
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 5
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+# Portable, cloud-agnostic scheduling: spread replicas across nodes.
+# Cloud-specific node targeting (e.g. AWS instance types) belongs in an overlay.
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - openwebui-k8s
+        topologyKey: kubernetes.io/hostname
+
+# Persistent Volume Configuration (CRITICAL - prevents data loss)
+# When enabled: Uses PVC for persistent storage
+# When disabled: Uses emptyDir (data lost on pod restart)
+persistence:
+  enabled: true
+  # Empty string uses the cluster's DEFAULT StorageClass, which every managed
+  # Kubernetes provides. Override per cloud for a specific disk type:
+  #   EKS: gp3 / gp2 (ebs-csi)   GKE: standard-rwo / premium-rwo   AKS: managed-csi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  mountPath: /app/backend/data
+
+# Init Container Configuration
+initContainer:
+  enabled: true # Set to false to disable the init container
+
+# Environment Variables
+env:
+# # Ollama Configuration (if using Ollama backend)
+# - name: OLLAMA_BASE_URL
+#   value: "" # e.g., http://ollama-service:11434
+
+# NLTK Data Directory (fixes permission denied errors)
+- name: NLTK_DATA
+  value: "/app/backend/data/nltk_data"
+
+# # # Additional NLTK environment variables to ensure custom path is used
+- name: NLTK_HOME
+  value: "/app/backend/data/nltk_data"
+- name: WEBUI_NAME
+  value: "Billups"
+
+# # File Upload Configuration (enables large file and xlsx uploads)
+# # - name: MAX_FILE_SIZE
+# #   value: "104857600" # 100MB in bytes (100 * 1024 * 1024)
+- name: UPLOAD_DIR
+  value: "/app/backend/data/uploads"
+- name: DATA_DIR
+  value: "/app/backend/data"
+# Processing timeout configuration (in seconds)
+# - name: FILE_UPLOAD_TIMEOUT
+#   value: "600" # 10 minutes for processing large xlsx files
+# - name: PROCESS_TIMEOUT
+#   value: "600" # 10 minutes for file processing
+# # Enable document processing with memory-efficient settings
+# - name: ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION
+#   value: "false"
+# - name: RAG_EMBEDDING_ENGINE
+#   value: "sentence-transformers"
+# - name: CHUNK_SIZE
+#   value: "2000" # Larger chunks to reduce memory overhead
+# - name: CHUNK_OVERLAP
+#   value: "200"
+# # Memory optimization for large file processing
+# - name: RAG_EMBEDDING_BATCH_SIZE
+#   value: "10" # Process in smaller batches to reduce memory usage
+# - name: PDF_EXTRACT_IMAGES
+#   value: "false" # Disable image extraction to save memory
+
+# WebUI Secret Key (required for session signing)
+# - name: WEBUI_SECRET_KEY
+#   valueFrom:
+#     secretKeyRef:
+#       name: webui-secret
+#       key: secret-key
+# OpenAI API Configuration (if using OpenAI)
+# - name: OPENAI_API_KEY
+#   valueFrom:
+#     secretKeyRef:
+#       name: openai-secret
+#       key: api-key
+
+# Offline mode (set to 1 to prevent internet downloads)
+# - name: HF_HUB_OFFLINE
+#   value: "1"
+
+# Additional environment variables can be added here
+
+# Extra volumes and volume mounts (portable escape hatch for e.g. CSI secret
+# stores, ConfigMaps, additional PVCs).
+volumes: []
+volumeMounts: []
+
+# ---------------------------------------------------------------------------
+# External Secrets (OPTIONAL) — requires the External Secrets Operator (ESO)
+# installed in the cluster. DISABLED by default so the base chart is portable.
+# Enable and configure the provider via a cloud overlay values file.
+# ---------------------------------------------------------------------------
+externalSecrets:
+  enabled: false
+  name: "open-webui-external-secret"
+  secretStoreRef:
+    name: "open-webui-secret-store"
+    kind: SecretStore
+  refreshInterval: 1m
+  target:
+    name: "open-webui-secrets"
+    creationPolicy: Owner
+  data: []
+  # - secretKey: WEBUI_SECRET_KEY
+  #   remoteRef:
+  #     key: open-webui/prod
+  #     property: WEBUI_SECRET_KEY
+
+# ---------------------------------------------------------------------------
+# SecretStore (OPTIONAL) — External Secrets Operator SecretStore. The whole
+# `provider` block is passed through verbatim, so ANY ESO provider works
+# (aws / gcpsm / azurekv / vault / kubernetes / ...). See cloud overlays for
+# ready-made examples. DISABLED by default.
+# ---------------------------------------------------------------------------
+secretStore:
+  enabled: false
+  name: "open-webui-secret-store"
+  # provider is rendered as-is under spec.provider. Example (AWS):
+  # provider:
+  #   aws:
+  #     service: SecretsManager
+  #     region: us-west-2
+  #     auth:
+  #       jwt:
+  #         serviceAccountRef:
+  #           name: open-webui-sa
+  provider: {}
