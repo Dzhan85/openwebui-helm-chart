@@ -1,5 +1,6 @@
 # Open WebUI Helm Chart
 
+[![Build](https://github.com/Dzhan85/openwebui-helm-chart/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Dzhan85/openwebui-helm-chart/actions/workflows/build.yml)
 [![Lint](https://github.com/Dzhan85/openwebui-helm-chart/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/Dzhan85/openwebui-helm-chart/actions/workflows/lint.yml)
 
 This Helm chart deploys [Open WebUI](https://github.com/open-webui/open-webui) on **any conformant Kubernetes cluster** — Amazon EKS, Google GKE, Azure AKS, or self-managed (k3s, kind, on-prem). This is the main web-based chat interface for interacting with various LLM backends including Ollama, OpenAI, and other OpenAI-compatible APIs.
