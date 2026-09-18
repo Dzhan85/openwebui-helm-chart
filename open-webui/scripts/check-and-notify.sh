@@ -17,7 +17,7 @@ CHECK_SCRIPT="${SCRIPT_DIR}/check-image-update.sh"
 # Configuration
 NOTIFICATION_METHOD="${1:-macos}"
 SLACK_WEBHOOK="${SLACK_WEBHOOK_URL:-}"
-EMAIL_TO="${EMAIL_TO:-admin@billups.com}"
+EMAIL_TO="${EMAIL_TO:-admin@example.com}"
 
 # Color codes
 RED='\033[0;31m'

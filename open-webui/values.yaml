@@ -162,7 +162,7 @@ env:
 - name: NLTK_HOME
   value: "/app/backend/data/nltk_data"
 - name: WEBUI_NAME
-  value: "Billups"
+  value: "Open WebUI"
 
 # # File Upload Configuration (enables large file and xlsx uploads)
 # # - name: MAX_FILE_SIZE

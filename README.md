@@ -1,4 +1,4 @@
-# Billups Open WebUI Helm Chart
+# Open WebUI Helm Chart
 
 This Helm chart deploys [Open WebUI](https://github.com/open-webui/open-webui) on **any conformant Kubernetes cluster** — Amazon EKS, Google GKE, Azure AKS, or self-managed (k3s, kind, on-prem). This is the main web-based chat interface for interacting with various LLM backends including Ollama, OpenAI, and other OpenAI-compatible APIs.
 
@@ -161,7 +161,7 @@ works without template changes.
 |---------|-------------------|---------------------------|
 | **Image** | `ghcr.io/open-webui/open-webui:main` | `ghcr.io/open-webui/open-terminal:latest` |
 | **Port** | 8080 | 8000 |
-| **Domain** | `openwebui.billups.com` | `openwebui-terminal.billups.com` |
+| **Domain** | `openwebui.example.com` | `openwebui-terminal.example.com` |
 | **Interface** | Web UI focused | Terminal-focused |
 | **Use Case** | Chat and conversation management | CLI-style interactions |
 | **Features** | Full web UI, multi-user, document uploads | Terminal-style interface |
@@ -265,7 +265,7 @@ env:
 ```yaml
 env:
   - name: WEBUI_NAME
-    value: "Billups"  # Custom name displayed in the UI
+    value: "Open WebUI"  # Custom name displayed in the UI
 ```
 
 ### External Secrets (Optional)
